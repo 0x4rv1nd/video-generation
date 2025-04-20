@@ -6,7 +6,7 @@ services:
   apt-get update
   apt-get install -y ffmpeg
   pip install -r requirements.txt   
-    startCommand:startCommand: gunicorn app:app --bind 0.0.0.0:5000
+    startCommand:startCommand: gunicorn app:app --bind 0.0.0.0:5000  --timeout 1000
     envVars:
       - key: PYTHONUNBUFFERED
         value: "true"
