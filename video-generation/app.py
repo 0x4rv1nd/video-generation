@@ -3,6 +3,7 @@ import subprocess
 import os
 from datetime import datetime
 import textwrap
+import atexit
 
 app = Flask(__name__)
 
@@ -50,7 +51,12 @@ def generate_video():
         OUTPUT_FOLDER, f"{os.path.splitext(video_filename)[0]}_{timestamp}.mp4"
     )
 
-    escaped_quote = process_quote(quote_text)
+    # Save the quote to a temporary text file
+    quote_path = os.path.join(OUTPUT_FOLDER, f"quote_{timestamp}.txt")
+    with open(quote_path, "w", encoding="utf-8") as f:
+        f.write(quote_text)
+
+    # Set fontsize based on quote length
     fontsize = calculate_fontsize(quote_text)
 
     ffmpeg_cmd = [
@@ -58,7 +64,7 @@ def generate_video():
         "-i", input_video,
         "-vf",
         (
-            f"drawtext=text='{escaped_quote}':"
+            f"drawtext=textfile='{quote_path}':"
             "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:"
             f"fontcolor=white:fontsize={fontsize}:line_spacing=12:"
             "box=1:boxcolor=black@0.5:boxborderw=20:"
@@ -72,10 +78,17 @@ def generate_video():
     ]
 
     try:
+        # Run FFmpeg command
         subprocess.run(ffmpeg_cmd, check=True)
+        
+        # Automatically delete the quote text file after processing
+        os.remove(quote_path)
+        
         return send_file(output_video, mimetype='video/mp4')
     except subprocess.CalledProcessError as e:
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
+    # Register clean-up on exit
+    atexit.register(lambda: os.remove(quote_path) if os.path.exists(quote_path) else None)
     app.run(debug=True)
