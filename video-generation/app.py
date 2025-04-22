@@ -10,16 +10,16 @@ VIDEO_FOLDER = "videos"
 OUTPUT_FOLDER = "static/output"
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
-def calculate_fontsize(quote):
+def calculate_fontsize(quote, max_width=40):
     length = len(quote)
-    if length < 80:
-        return 48
-    elif length < 150:
-        return 40
-    elif length < 220:
-        return 32
+    if length < 100:
+        return 60  # Larger font for short quotes
+    elif length < 200:
+        return 48  # Moderate font size for medium-length quotes
+    elif length < 300:
+        return 36  # Smaller font for longer quotes
     else:
-        return 26
+        return 24  # Very small font for long quotes
 
 def process_quote_for_wrapping(quote, wrap_width=40):
     # Only wrap if no manual line breaks
