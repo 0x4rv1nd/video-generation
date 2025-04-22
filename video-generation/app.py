@@ -14,11 +14,19 @@ os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 def generate_video():
     data = request.json
     quote = data.get("quote", "Your quote goes here")
-    mood = data.get("mood", "calm").lower()
+    video_filename = data.get("video")
 
-    input_video = os.path.join(VIDEO_FOLDER, f"{mood}.mp4")
+    if not video_filename:
+        return jsonify({"error": "Video filename not provided"}), 400
+
+    input_video = os.path.join(VIDEO_FOLDER, video_filename)
+    if not os.path.isfile(input_video):
+        return jsonify({"error": f"Video file '{video_filename}' not found"}), 404
+
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-    output_video = os.path.join(OUTPUT_FOLDER, f"{mood}_{timestamp}.mp4")
+    output_video = os.path.join(
+        OUTPUT_FOLDER, f"{os.path.splitext(video_filename)[0]}_{timestamp}.mp4"
+    )
 
     # Replace single line breaks with FFmpeg line breaks
     formatted_quote = quote.replace("\n", r'\n')
