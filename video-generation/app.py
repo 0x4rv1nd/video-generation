@@ -48,7 +48,7 @@ def generate_video():
     with open(quote_path, "w", encoding="utf-8") as f:
         f.write(wrapped)
 
-    fontsize = calculate_fontsize(quote_text)
+    fontsize = 20
 
     vf = (
         f"drawtext=textfile={quote_path}:reload=1:"
