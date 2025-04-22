@@ -47,9 +47,7 @@ ffmpeg_cmd = [
     "-codec:a", "copy",
     output_video,
     "-y"
-]
-
-
+  ]
     try:
         subprocess.run(ffmpeg_cmd, check=True)
         return send_file(output_video, mimetype='video/mp4')
