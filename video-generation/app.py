@@ -3,7 +3,6 @@ import subprocess
 import os
 from datetime import datetime
 import textwrap
-import atexit
 
 app = Flask(__name__)
 
@@ -11,7 +10,7 @@ VIDEO_FOLDER = "videos"
 OUTPUT_FOLDER = "static/output"
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
-def calculate_fontsize(quote, max_width=40):
+def calculate_fontsize(quote):
     length = len(quote)
     if length < 80:
         return 48
@@ -22,73 +21,56 @@ def calculate_fontsize(quote, max_width=40):
     else:
         return 26
 
-def process_quote(quote, wrap_width=40):
-    # Check if the user added line breaks manually
+def process_quote_for_wrapping(quote, wrap_width=40):
+    # Only wrap if no manual line breaks
     if '\n' in quote:
-        # Preserve user formatting
-        escaped = quote.replace("'", r"\'").replace(":", r'\:').replace("\n", r'\\n')
-    else:
-        # Auto-wrap the text
-        wrapped = '\n'.join(textwrap.wrap(quote, width=wrap_width))
-        escaped = wrapped.replace("'", r"\'").replace(":", r'\:').replace("\n", r'\\n')
-    return escaped
+        return quote
+    return '\n'.join(textwrap.wrap(quote, width=wrap_width))
 
 @app.route("/generate", methods=["POST"])
 def generate_video():
     data = request.json
     quote_text = data.get("quote", "Your quote goes here")
     video_filename = data.get("video")
-
     if not video_filename:
-        return jsonify({"error": "Video filename not provided"}), 400
+        return jsonify(error="Video filename not provided"), 400
 
-    input_video = os.path.join(VIDEO_FOLDER, video_filename)
-    if not os.path.isfile(input_video):
-        return jsonify({"error": f"Video file '{video_filename}' not found"}), 404
+    input_path = os.path.join(VIDEO_FOLDER, video_filename)
+    if not os.path.isfile(input_path):
+        return jsonify(error=f"Video file '{video_filename}' not found"), 404
 
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-    output_video = os.path.join(
-        OUTPUT_FOLDER, f"{os.path.splitext(video_filename)[0]}_{timestamp}.mp4"
-    )
+    ts = datetime.now().strftime("%Y%m%d%H%M%S")
+    output_path = os.path.join(OUTPUT_FOLDER, f"{os.path.splitext(video_filename)[0]}_{ts}.mp4")
+    quote_path  = os.path.join(OUTPUT_FOLDER, f"quote_{ts}.txt")
 
-    # Save the quote to a temporary text file
-    quote_path = os.path.join(OUTPUT_FOLDER, f"quote_{timestamp}.txt")
+    # 1) Prepare the text file
+    wrapped = process_quote_for_wrapping(quote_text)
     with open(quote_path, "w", encoding="utf-8") as f:
-        f.write(quote_text)
+        f.write(wrapped)
 
-    # Set fontsize based on quote length
     fontsize = calculate_fontsize(quote_text)
 
-    ffmpeg_cmd = [
-        "ffmpeg",
-        "-i", input_video,
-        "-vf",
-        (
-            f"drawtext=textfile='{quote_path}':"
-            "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:"
-            f"fontcolor=white:fontsize={fontsize}:line_spacing=12:"
-            "box=1:boxcolor=black@0.5:boxborderw=20:"
-            "x=(w-text_w)/2:y=(h-text_h)/2:"
-            "escape=char:"
-            "enable='between(t,0,20)'"
-        ),
-        "-codec:a", "copy",
-        output_video,
-        "-y"
-    ]
+    vf = (
+        f"drawtext=textfile={quote_path}:reload=1:"
+        f"fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:"
+        f"fontcolor=white:fontsize={fontsize}:line_spacing=12:"
+        f"box=1:boxcolor=black@0.5:boxborderw=20:"
+        f"x=(w-text_w)/2:y=(h-text_h)/2:"
+        f"enable='between(t,0,20)'"
+    )
 
     try:
-        # Run FFmpeg command
-        subprocess.run(ffmpeg_cmd, check=True)
-        
-        # Automatically delete the quote text file after processing
-        os.remove(quote_path)
-        
-        return send_file(output_video, mimetype='video/mp4')
+        subprocess.run(
+            ["ffmpeg", "-i", input_path, "-vf", vf, "-codec:a", "copy", output_path, "-y"],
+            check=True,
+        )
+        return send_file(output_path, mimetype="video/mp4")
     except subprocess.CalledProcessError as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify(error=str(e)), 500
+    finally:
+        # always remove the temp text file
+        if os.path.exists(quote_path):
+            os.remove(quote_path)
 
 if __name__ == "__main__":
-    # Register clean-up on exit
-    atexit.register(lambda: os.remove(quote_path) if os.path.exists(quote_path) else None)
     app.run(debug=True)
