@@ -2,13 +2,35 @@ from flask import Flask, request, send_file, jsonify
 import subprocess
 import os
 from datetime import datetime
+import textwrap
 
 app = Flask(__name__)
 
 VIDEO_FOLDER = "videos"
 OUTPUT_FOLDER = "static/output"
-
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+
+def calculate_fontsize(quote, max_width=40):
+    length = len(quote)
+    if length < 80:
+        return 48
+    elif length < 150:
+        return 40
+    elif length < 220:
+        return 32
+    else:
+        return 26
+
+def process_quote(quote, wrap_width=40):
+    # Check if the user added line breaks manually
+    if '\n' in quote:
+        # Preserve user formatting
+        escaped = quote.replace("'", r"\'").replace(":", r'\:').replace("\n", r'\\n')
+    else:
+        # Auto-wrap the text
+        wrapped = '\n'.join(textwrap.wrap(quote, width=wrap_width))
+        escaped = wrapped.replace("'", r"\'").replace(":", r'\:').replace("\n", r'\\n')
+    return escaped
 
 @app.route("/generate", methods=["POST"])
 def generate_video():
@@ -28,8 +50,8 @@ def generate_video():
         OUTPUT_FOLDER, f"{os.path.splitext(video_filename)[0]}_{timestamp}.mp4"
     )
 
-    # Escape special characters and preserve line breaks
-    escaped_quote = quote_text.replace("'", r"\'").replace(":", r'\:').replace("\n", r'\n')
+    escaped_quote = process_quote(quote_text)
+    fontsize = calculate_fontsize(quote_text)
 
     ffmpeg_cmd = [
         "ffmpeg",
@@ -38,9 +60,10 @@ def generate_video():
         (
             f"drawtext=text='{escaped_quote}':"
             "fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:"
-            "fontcolor=white:fontsize=32:line_spacing=10:"
+            f"fontcolor=white:fontsize={fontsize}:line_spacing=12:"
+            "box=1:boxcolor=black@0.5:boxborderw=20:"
             "x=(w-text_w)/2:y=(h-text_h)/2:"
-            "box=0:"
+            "escape=char:"
             "enable='between(t,0,20)'"
         ),
         "-codec:a", "copy",
