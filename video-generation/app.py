@@ -14,8 +14,8 @@ ROBOTO_FONT_PATH = "Roboto-Italic-VariableFont.ttf"
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
 # Font settings
-STATIC_FONT_SIZE = 36  # Reduced for better fit in vertical videos
-LINE_SPACING = 8       # Reduced line spacing for cleaner layout
+STATIC_FONT_SIZE = 25  # Reduced for better fit in vertical videos
+LINE_SPACING = 6      # Reduced line spacing for cleaner layout
 
 def get_video_dimensions(video_path):
     """Use ffprobe to get video width and height."""
