@@ -7,13 +7,15 @@ from datetime import datetime
 
 app = Flask(__name__)
 
+# Paths and folders
 VIDEO_FOLDER = "videos"
 OUTPUT_FOLDER = "static/output"
 ROBOTO_FONT_PATH = "Roboto-Italic-VariableFont.ttf"
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
-STATIC_FONT_SIZE = 42  # Always same font size
-LINE_SPACING = 10  # Consistent line spacing
+# Font settings
+STATIC_FONT_SIZE = 36  # Reduced for better fit in vertical videos
+LINE_SPACING = 8       # Reduced line spacing for cleaner layout
 
 def get_video_dimensions(video_path):
     """Use ffprobe to get video width and height."""
@@ -28,14 +30,9 @@ def get_video_dimensions(video_path):
     height = info['streams'][0]['height']
     return width, height
 
-def determine_wrap_width(video_width):
-    """Decide how many characters per line based on video width."""
-    if video_width >= 1920:
-        return 50  # Full HD video
-    elif video_width >= 1280:
-        return 35  # 720p video
-    else:
-        return 30  # Smaller videos
+def determine_wrap_width(_):
+    """Return a fixed wrap width suitable for 9:16 videos."""
+    return 25  # Adjust if needed for your font and style
 
 def process_quote_for_wrapping(quote, wrap_width):
     """Manually wrap text for FFmpeg drawtext."""
@@ -73,6 +70,7 @@ def generate_video():
     wrap_width = determine_wrap_width(video_width)
     wrapped_quote, lines_count = process_quote_for_wrapping(quote_text, wrap_width)
 
+    # Save wrapped quote to file
     with open(quote_path, "w", encoding="utf-8") as f:
         f.write(wrapped_quote)
 
