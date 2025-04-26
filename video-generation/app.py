@@ -7,7 +7,7 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-# Paths and folders
+# Paths
 VIDEO_FOLDER = "videos"
 OUTPUT_FOLDER = "static/output"
 ROBOTO_FONT_PATH = "Roboto-Italic-VariableFont.ttf"
@@ -26,33 +26,46 @@ def get_video_dimensions(video_path):
     height = info['streams'][0]['height']
     return width, height
 
-def determine_wrap_width(_):
-    """Fixed wrap width suitable for 9:16 videos (e.g., 720x1280 or 1080x1920)."""
-    return 25  # Adjust this if you're using a different font or need tighter spacing
+def determine_wrap_width(video_width, quote_length):
+    """Adjust wrap width depending on video width and quote length."""
+    if video_width >= 1080:
+        base = 35
+    elif video_width >= 720:
+        base = 30
+    else:
+        base = 25
+
+    if quote_length > 200:
+        return base - 5
+    elif quote_length > 120:
+        return base - 3
+    else:
+        return base
 
 def process_quote_for_wrapping(quote, wrap_width):
-    """Manually wrap text for FFmpeg drawtext and count lines."""
+    """Wrap text and count number of lines."""
     if '\n' in quote:
-        lines = quote.splitlines()
+        lines = []
+        for line in quote.splitlines():
+            lines.extend(textwrap.wrap(line, width=wrap_width))
     else:
         lines = textwrap.wrap(quote, width=wrap_width)
     return '\n'.join(lines), len(lines)
 
 def calculate_vertical_offset(lines_count, font_size, line_spacing):
-    """Calculate vertical centering offset based on text block height."""
+    """Center text vertically in video."""
     total_text_height = lines_count * font_size + (lines_count - 1) * line_spacing
     return f"(h-{total_text_height})/2"
 
 def get_dynamic_font_and_spacing(lines_count, video_height):
-    """
-    Dynamically determine font size and line spacing based on number of lines and video height.
-    """
-    max_text_height_ratio = 0.65  # use up to 65% of screen height
-    available_height = video_height * max_text_height_ratio
+    """Dynamically determine font size and spacing."""
+    max_ratio = 0.55  # Use up to 55% of screen height
+    available_height = video_height * max_ratio
 
-    base_font = int(available_height / (lines_count + (lines_count - 1) * 0.25))
-    font_size = max(24, min(base_font, 60))  # Clamp between 24–60
-    line_spacing = int(font_size * 0.25)
+    lines_count = max(1, lines_count)
+    font_size = int(available_height / (lines_count + (lines_count - 1) * 0.25))
+    font_size = max(18, min(font_size, 60))
+    line_spacing = int(font_size * 0.2)
 
     return font_size, line_spacing
 
@@ -77,14 +90,16 @@ def generate_video():
     video_width, video_height = get_video_dimensions(input_path)
     print(f"Video size: {video_width}x{video_height}")
 
-    wrap_width = determine_wrap_width(video_width)
+    wrap_width = determine_wrap_width(video_width, len(quote_text))
     wrapped_quote, lines_count = process_quote_for_wrapping(quote_text, wrap_width)
 
-    # Save quote to file
+    # Clamp long quotes
+    if lines_count > 14:
+        return jsonify(error="Quote is too long to fit in the video. Please shorten it."), 400
+
     with open(quote_path, "w", encoding="utf-8") as f:
         f.write(wrapped_quote)
 
-    # Calculate dynamic font size and spacing
     fontsize, line_spacing = get_dynamic_font_and_spacing(lines_count, video_height)
     y_offset = calculate_vertical_offset(lines_count, fontsize, line_spacing)
 
