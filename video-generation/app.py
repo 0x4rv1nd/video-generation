@@ -49,15 +49,15 @@ def generate_video():
 
     # Define drawtext filter with fade-in/out (enable from 1s to 5s)
     vf = (
-        f"drawtext=textfile={quote_path}:reload=1:"
-        f"fontfile={ROBOTO_FONT_PATH}:"
-        f"fontcolor=white:fontsize={fontsize}:line_spacing=12:"
-        f"box=1:boxcolor=black@0.5:boxborderw=20:"
-        f"x=(w-text_w)/2:y=(h-text_h)/2:"
-        f"enable='between(t,1,5)',"
-        f"fade=t=in:st=1:d=1,fade=t=out:st=4:d=1"
-    )
-
+    f"drawtext=textfile={quote_path}:reload=1:"
+    f"fontfile={ROBOTO_FONT_PATH}:"
+    f"fontcolor=white:fontsize={fontsize}:line_spacing=12:"
+    f"box=1:boxcolor=black@0.5:boxborderw=20:"
+    f"x=(w-text_w)/2:y=(h-text_h)/2:"
+    f"wrap=word:max_text_width=w*0.8:"
+    f"enable='between(t,1,5)',"
+    f"fade=t=in:st=1:d=1,fade=t=out:st=4:d=1"
+)
     try:
         subprocess.run(
             ["ffmpeg", "-i", input_path, "-vf", vf, "-codec:a", "copy", output_path, "-y"],
