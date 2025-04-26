@@ -48,16 +48,20 @@ def generate_video():
     fontsize = calculate_fontsize_from_longest_line(wrapped)
 
     # Define drawtext filter with fade-in/out (enable from 1s to 5s)
-    vf = (
+    vf_drawtext = (
     f"drawtext=textfile={quote_path}:reload=1:"
     f"fontfile={ROBOTO_FONT_PATH}:"
     f"fontcolor=white:fontsize={fontsize}:line_spacing=12:"
     f"box=1:boxcolor=black@0.5:boxborderw=20:"
     f"x=(w-text_w)/2:y=(h-text_h)/2:"
     f"wrap=word:max_text_width=w*0.8:"
-    f"enable='between(t,1,5)',"
-    f"fade=t=in:st=1:d=1,fade=t=out:st=4:d=1"
+    f"enable='between(t,0,20)'"
     )
+
+    vf_fade = "fade=t=in:st=0:d=1,fade=t=out:st=4:d=1"
+
+    vf = f"{vf_drawtext},{vf_fade}"
+
     try:
         subprocess.run(
             ["ffmpeg", "-i", input_path, "-vf", vf, "-codec:a", "copy", output_path, "-y"],
