@@ -57,7 +57,7 @@ def generate_video():
     f"wrap=word:max_text_width=w*0.8:"
     f"enable='between(t,1,5)',"
     f"fade=t=in:st=1:d=1,fade=t=out:st=4:d=1"
-)
+    )
     try:
         subprocess.run(
             ["ffmpeg", "-i", input_path, "-vf", vf, "-codec:a", "copy", output_path, "-y"],
