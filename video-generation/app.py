@@ -53,6 +53,10 @@ def create_quote_image(text, video_width, video_height, output_img_path):
         y_text += fontsize + line_spacing
 
     img.save(output_img_path)
+    
+@app.route("/health", methods=["GET"])
+def health():
+    return "OK", 200
 
 @app.route("/generate", methods=["POST"])
 def generate():
