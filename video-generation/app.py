@@ -13,10 +13,6 @@ OUTPUT_FOLDER = "static/output"
 ROBOTO_FONT_PATH = "Roboto-Italic-VariableFont.ttf"
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
-# Font settings
-STATIC_FONT_SIZE = 25  # Reduced for better fit in vertical videos
-LINE_SPACING = 6      # Reduced line spacing for cleaner layout
-
 def get_video_dimensions(video_path):
     """Use ffprobe to get video width and height."""
     cmd = [
@@ -31,11 +27,11 @@ def get_video_dimensions(video_path):
     return width, height
 
 def determine_wrap_width(_):
-    """Return a fixed wrap width suitable for 9:16 videos."""
-    return 25  # Adjust if needed for your font and style
+    """Fixed wrap width suitable for 9:16 videos (e.g., 720x1280 or 1080x1920)."""
+    return 25  # Adjust this if you're using a different font or need tighter spacing
 
 def process_quote_for_wrapping(quote, wrap_width):
-    """Manually wrap text for FFmpeg drawtext."""
+    """Manually wrap text for FFmpeg drawtext and count lines."""
     if '\n' in quote:
         lines = quote.splitlines()
     else:
@@ -43,15 +39,29 @@ def process_quote_for_wrapping(quote, wrap_width):
     return '\n'.join(lines), len(lines)
 
 def calculate_vertical_offset(lines_count, font_size, line_spacing):
-    """Calculate y offset for vertical centering."""
+    """Calculate vertical centering offset based on text block height."""
     total_text_height = lines_count * font_size + (lines_count - 1) * line_spacing
     return f"(h-{total_text_height})/2"
+
+def get_dynamic_font_and_spacing(lines_count, video_height):
+    """
+    Dynamically determine font size and line spacing based on number of lines and video height.
+    """
+    max_text_height_ratio = 0.65  # use up to 65% of screen height
+    available_height = video_height * max_text_height_ratio
+
+    base_font = int(available_height / (lines_count + (lines_count - 1) * 0.25))
+    font_size = max(24, min(base_font, 60))  # Clamp between 24–60
+    line_spacing = int(font_size * 0.25)
+
+    return font_size, line_spacing
 
 @app.route("/generate", methods=["POST"])
 def generate_video():
     data = request.json
     quote_text = data.get("quote", "Your quote goes here")
     video_filename = data.get("video")
+
     if not video_filename:
         return jsonify(error="Video filename not provided"), 400
 
@@ -70,27 +80,26 @@ def generate_video():
     wrap_width = determine_wrap_width(video_width)
     wrapped_quote, lines_count = process_quote_for_wrapping(quote_text, wrap_width)
 
-    # Save wrapped quote to file
+    # Save quote to file
     with open(quote_path, "w", encoding="utf-8") as f:
         f.write(wrapped_quote)
 
-    fontsize = STATIC_FONT_SIZE
-    y_offset = calculate_vertical_offset(lines_count, fontsize, LINE_SPACING)
+    # Calculate dynamic font size and spacing
+    fontsize, line_spacing = get_dynamic_font_and_spacing(lines_count, video_height)
+    y_offset = calculate_vertical_offset(lines_count, fontsize, line_spacing)
 
     # Drawtext filter
     vf_drawtext = (
         f"drawtext=textfile={quote_path}:reload=1:"
         f"fontfile={ROBOTO_FONT_PATH}:"
-        f"fontcolor=white:fontsize={fontsize}:line_spacing={LINE_SPACING}:"
+        f"fontcolor=white:fontsize={fontsize}:line_spacing={line_spacing}:"
         f"box=1:boxcolor=black@0.5:boxborderw=20:"
         f"x=(w-text_w)/2:y={y_offset}:"
         f"enable='between(t,0,20)'"
     )
 
-    # Fade in and fade out filter
+    # Fade filters
     vf_fade = "fade=t=in:st=0:d=1,fade=t=out:st=4:d=1"
-
-    # Combine filters
     vf = f"{vf_drawtext},{vf_fade}"
 
     cmd = [
@@ -101,7 +110,7 @@ def generate_video():
     ]
 
     try:
-        print("Running command:", " ".join(cmd))
+        print("Running FFmpeg command:\n", " ".join(cmd))
         subprocess.run(cmd, check=True)
         return send_file(output_path, mimetype="video/mp4")
     except subprocess.CalledProcessError as e:
