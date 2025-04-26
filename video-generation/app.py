@@ -11,7 +11,7 @@ OUTPUT_FOLDER = "static/output"
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
 # Path to the Roboto font you uploaded
-ROBOTO_FONT_PATH = "Roboto-Italic-VariableFont_wdth,wght(1).ttf"
+ROBOTO_FONT_PATH = "Roboto-Italic-VariableFont.ttf"
 
 def process_quote_for_wrapping(quote, wrap_width=40):
     if '\n' in quote:
