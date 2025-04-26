@@ -31,7 +31,7 @@ def get_video_dimensions(video_path):
 
 def calculate_safe_text_area(video_width, video_height):
     """Calculate the width and height for the text area (7:16 of the video)."""
-    text_area_width = int(video_width * (7 / 16))
+    text_area_width = int(video_width * (9 / 16))
     text_area_height = video_height  # full height of video
     return text_area_width, text_area_height
 
