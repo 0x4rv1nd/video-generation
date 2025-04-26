@@ -1,27 +1,54 @@
 from flask import Flask, request, send_file, jsonify
 import subprocess
 import os
-from datetime import datetime
 import textwrap
+import json
+from datetime import datetime
 
 app = Flask(__name__)
 
 VIDEO_FOLDER = "videos"
 OUTPUT_FOLDER = "static/output"
+ROBOTO_FONT_PATH = "Roboto-Italic-VariableFont.ttf"
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
-# Path to the Roboto font you uploaded
-ROBOTO_FONT_PATH = "Roboto-Italic-VariableFont.ttf"
+STATIC_FONT_SIZE = 42  # Always same font size
+LINE_SPACING = 10  # Consistent line spacing
 
-def process_quote_for_wrapping(quote, wrap_width=40):
+def get_video_dimensions(video_path):
+    """Use ffprobe to get video width and height."""
+    cmd = [
+        "ffprobe", "-v", "error", "-select_streams", "v:0",
+        "-show_entries", "stream=width,height",
+        "-of", "json", video_path
+    ]
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    info = json.loads(result.stdout)
+    width = info['streams'][0]['width']
+    height = info['streams'][0]['height']
+    return width, height
+
+def determine_wrap_width(video_width):
+    """Decide how many characters per line based on video width."""
+    if video_width >= 1920:
+        return 50  # Full HD video
+    elif video_width >= 1280:
+        return 35  # 720p video
+    else:
+        return 30  # Smaller videos
+
+def process_quote_for_wrapping(quote, wrap_width):
+    """Manually wrap text for FFmpeg drawtext."""
     if '\n' in quote:
-        return quote
-    return '\n'.join(textwrap.wrap(quote, width=wrap_width))
+        lines = quote.splitlines()
+    else:
+        lines = textwrap.wrap(quote, width=wrap_width)
+    return '\n'.join(lines), len(lines)
 
-def calculate_fontsize_from_longest_line(wrapped_quote, base_size=60, max_width_chars=40):
-    longest_line_length = max(len(line) for line in wrapped_quote.split('\n'))
-    scale_factor = min(1.0, max_width_chars / longest_line_length)
-    return int(base_size * scale_factor)
+def calculate_vertical_offset(lines_count, font_size, line_spacing):
+    """Calculate y offset for vertical centering."""
+    total_text_height = lines_count * font_size + (lines_count - 1) * line_spacing
+    return f"(h-{total_text_height})/2"
 
 @app.route("/generate", methods=["POST"])
 def generate_video():
@@ -37,36 +64,47 @@ def generate_video():
 
     ts = datetime.now().strftime("%Y%m%d%H%M%S")
     output_path = os.path.join(OUTPUT_FOLDER, f"{os.path.splitext(video_filename)[0]}_{ts}.mp4")
-    quote_path  = os.path.join(OUTPUT_FOLDER, f"quote_{ts}.txt")
+    quote_path = os.path.join(OUTPUT_FOLDER, f"quote_{ts}.txt")
 
-    # Process and save wrapped quote
-    wrapped = process_quote_for_wrapping(quote_text)
+    # Get video size
+    video_width, video_height = get_video_dimensions(input_path)
+    print(f"Video size: {video_width}x{video_height}")
+
+    wrap_width = determine_wrap_width(video_width)
+    wrapped_quote, lines_count = process_quote_for_wrapping(quote_text, wrap_width)
+
     with open(quote_path, "w", encoding="utf-8") as f:
-        f.write(wrapped)
+        f.write(wrapped_quote)
 
-    # Determine font size based on the longest line
-    fontsize = calculate_fontsize_from_longest_line(wrapped)
+    fontsize = STATIC_FONT_SIZE
+    y_offset = calculate_vertical_offset(lines_count, fontsize, LINE_SPACING)
 
-    # Define drawtext filter with fade-in/out (enable from 1s to 5s)
+    # Drawtext filter
     vf_drawtext = (
-    f"drawtext=textfile={quote_path}:reload=1:"
-    f"fontfile={ROBOTO_FONT_PATH}:"
-    f"fontcolor=white:fontsize={fontsize}:line_spacing=12:"
-    f"box=1:boxcolor=black@0.5:boxborderw=20:"
-    f"x=(w-text_w)/2:y=(h-text_h)/2:"
-    f"wrap=word:max_text_width=w*0.8:"
-    f"enable='between(t,0,20)'"
+        f"drawtext=textfile={quote_path}:reload=1:"
+        f"fontfile={ROBOTO_FONT_PATH}:"
+        f"fontcolor=white:fontsize={fontsize}:line_spacing={LINE_SPACING}:"
+        f"box=1:boxcolor=black@0.5:boxborderw=20:"
+        f"x=(w-text_w)/2:y={y_offset}:"
+        f"enable='between(t,0,20)'"
     )
 
+    # Fade in and fade out filter
     vf_fade = "fade=t=in:st=0:d=1,fade=t=out:st=4:d=1"
 
+    # Combine filters
     vf = f"{vf_drawtext},{vf_fade}"
 
+    cmd = [
+        "ffmpeg", "-i", input_path,
+        "-vf", vf,
+        "-codec:a", "copy", output_path,
+        "-y"
+    ]
+
     try:
-        subprocess.run(
-            ["ffmpeg", "-i", input_path, "-vf", vf, "-codec:a", "copy", output_path, "-y"],
-            check=True,
-        )
+        print("Running command:", " ".join(cmd))
+        subprocess.run(cmd, check=True)
         return send_file(output_path, mimetype="video/mp4")
     except subprocess.CalledProcessError as e:
         return jsonify(error=str(e)), 500
@@ -75,4 +113,4 @@ def generate_video():
             os.remove(quote_path)
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
