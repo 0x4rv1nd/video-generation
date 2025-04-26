@@ -1,24 +1,22 @@
 from flask import Flask, request, send_file, jsonify
 import subprocess
 import os
-import textwrap
 import json
 from datetime import datetime
+from PIL import Image, ImageDraw, ImageFont
+import textwrap
 
 app = Flask(__name__)
 
-# Paths
 VIDEO_FOLDER = "videos"
 OUTPUT_FOLDER = "static/output"
-ROBOTO_FONT_PATH = "Roboto-Italic-VariableFont.ttf"
+FONT_PATH = "Roboto-Italic-VariableFont.ttf"
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
 def get_video_dimensions(video_path):
-    """Use ffprobe to get video width and height."""
     cmd = [
         "ffprobe", "-v", "error", "-select_streams", "v:0",
-        "-show_entries", "stream=width,height",
-        "-of", "json", video_path
+        "-show_entries", "stream=width,height", "-of", "json", video_path
     ]
     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     info = json.loads(result.stdout)
@@ -26,53 +24,62 @@ def get_video_dimensions(video_path):
     height = info['streams'][0]['height']
     return width, height
 
-def determine_wrap_width(video_width, quote_length):
-    """Adjust wrap width depending on video width and quote length."""
-    if video_width >= 1080:
-        base = 35
-    elif video_width >= 720:
-        base = 30
-    else:
-        base = 25
+def generate_text_image(text, output_path, video_width, video_height):
+    # Define 1:1 canvas, safe text area (7:16 inside 9:16)
+    canvas_size = min(video_width, video_height)
+    image_size = (canvas_size, canvas_size)
+    safe_width = int(canvas_size * (7 / 9))  # 7:16 safe area horizontally
 
-    if quote_length > 200:
-        return base - 5
-    elif quote_length > 120:
-        return base - 3
-    else:
-        return base
+    img = Image.new("RGBA", image_size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
 
-def process_quote_for_wrapping(quote, wrap_width):
-    """Wrap text and count number of lines."""
-    if '\n' in quote:
-        lines = []
-        for line in quote.splitlines():
-            lines.extend(textwrap.wrap(line, width=wrap_width))
-    else:
-        lines = textwrap.wrap(quote, width=wrap_width)
-    return '\n'.join(lines), len(lines)
+    # Load font
+    font_size = 40
+    font = ImageFont.truetype(FONT_PATH, font_size)
 
-def calculate_vertical_offset(lines_count, font_size, line_spacing):
-    """Center text vertically in video."""
-    total_text_height = lines_count * font_size + (lines_count - 1) * line_spacing
-    return f"(h-{total_text_height})/2"
+    # Word wrapping
+    wrapped_text = textwrap.fill(text, width=35)
 
-def get_dynamic_font_and_spacing(lines_count, video_height):
-    """Dynamically determine font size and spacing."""
-    max_ratio = 0.55  # Use up to 55% of screen height
-    available_height = video_height * max_ratio
+    # Recalculate font size if text is too long
+    lines = wrapped_text.count("\n") + 1
+    max_lines = 14
+    while lines > max_lines:
+        font_size -= 2
+        font = ImageFont.truetype(FONT_PATH, font_size)
+        wrapped_text = textwrap.fill(text, width=35)
+        lines = wrapped_text.count("\n") + 1
 
-    lines_count = max(1, lines_count)
-    font_size = int(available_height / (lines_count + (lines_count - 1) * 0.25))
-    font_size = max(18, min(font_size, 60))
-    line_spacing = int(font_size * 0.2)
+    # Measure and center
+    text_width, text_height = draw.multiline_textsize(wrapped_text, font=font, spacing=10)
+    x = (image_size[0] - text_width) / 2
+    y = (image_size[1] - text_height) / 2
 
-    return font_size, line_spacing
+    # Draw semi-transparent box
+    box_padding = 20
+    draw.rectangle(
+        [x - box_padding, y - box_padding,
+         x + text_width + box_padding, y + text_height + box_padding],
+        fill=(0, 0, 0, 180)
+    )
+
+    # Draw text
+    draw.multiline_text((x, y), wrapped_text, font=font, fill="white", spacing=10, align="center")
+    img.save(output_path, "PNG")
+
+def overlay_text_on_video(video_path, image_path, output_path):
+    cmd = [
+        "ffmpeg", "-i", video_path, "-i", image_path,
+        "-filter_complex",
+        "[1:v]format=rgba,fade=t=in:st=0:d=1:alpha=1,fade=t=out:st=4:d=1:alpha=1[ov];"
+        "[0:v][ov]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2",
+        "-c:a", "copy", "-y", output_path
+    ]
+    subprocess.run(cmd, check=True)
 
 @app.route("/generate", methods=["POST"])
 def generate_video():
     data = request.json
-    quote_text = data.get("quote", "Your quote goes here")
+    quote = data.get("quote", "Your quote here")
     video_filename = data.get("video")
 
     if not video_filename:
@@ -83,56 +90,14 @@ def generate_video():
         return jsonify(error=f"Video file '{video_filename}' not found"), 404
 
     ts = datetime.now().strftime("%Y%m%d%H%M%S")
+    image_path = os.path.join(OUTPUT_FOLDER, f"text_{ts}.png")
     output_path = os.path.join(OUTPUT_FOLDER, f"{os.path.splitext(video_filename)[0]}_{ts}.mp4")
-    quote_path = os.path.join(OUTPUT_FOLDER, f"quote_{ts}.txt")
 
-    # Get video size
     video_width, video_height = get_video_dimensions(input_path)
-    print(f"Video size: {video_width}x{video_height}")
+    generate_text_image(quote, image_path, video_width, video_height)
+    overlay_text_on_video(input_path, image_path, output_path)
 
-    wrap_width = determine_wrap_width(video_width, len(quote_text))
-    wrapped_quote, lines_count = process_quote_for_wrapping(quote_text, wrap_width)
-
-    # Clamp long quotes
-    if lines_count > 14:
-        return jsonify(error="Quote is too long to fit in the video. Please shorten it."), 400
-
-    with open(quote_path, "w", encoding="utf-8") as f:
-        f.write(wrapped_quote)
-
-    fontsize, line_spacing = get_dynamic_font_and_spacing(lines_count, video_height)
-    y_offset = calculate_vertical_offset(lines_count, fontsize, line_spacing)
-
-    # Drawtext filter
-    vf_drawtext = (
-        f"drawtext=textfile={quote_path}:reload=1:"
-        f"fontfile={ROBOTO_FONT_PATH}:"
-        f"fontcolor=white:fontsize={fontsize}:line_spacing={line_spacing}:"
-        f"box=1:boxcolor=black@0.5:boxborderw=20:"
-        f"x=(w-text_w)/2:y={y_offset}:"
-        f"enable='between(t,0,20)'"
-    )
-
-    # Fade filters
-    vf_fade = "fade=t=in:st=0:d=1,fade=t=out:st=4:d=1"
-    vf = f"{vf_drawtext},{vf_fade}"
-
-    cmd = [
-        "ffmpeg", "-i", input_path,
-        "-vf", vf,
-        "-codec:a", "copy", output_path,
-        "-y"
-    ]
-
-    try:
-        print("Running FFmpeg command:\n", " ".join(cmd))
-        subprocess.run(cmd, check=True)
-        return send_file(output_path, mimetype="video/mp4")
-    except subprocess.CalledProcessError as e:
-        return jsonify(error=str(e)), 500
-    finally:
-        if os.path.exists(quote_path):
-            os.remove(quote_path)
+    return send_file(output_path, mimetype="video/mp4")
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
