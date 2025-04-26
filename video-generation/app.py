@@ -10,22 +10,18 @@ VIDEO_FOLDER = "videos"
 OUTPUT_FOLDER = "static/output"
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
-def calculate_fontsize(quote, max_width=40):
-    length = len(quote)
-    if length < 100:
-        return 60  # Larger font for short quotes
-    elif length < 200:
-        return 48  # Moderate font size for medium-length quotes
-    elif length < 300:
-        return 36  # Smaller font for longer quotes
-    else:
-        return 24  # Very small font for long quotes
+# Path to the Roboto font you uploaded
+ROBOTO_FONT_PATH = "/mnt/data/Roboto-Italic-VariableFont_wdth,wght(1).ttf"
 
 def process_quote_for_wrapping(quote, wrap_width=40):
-    # Only wrap if no manual line breaks
     if '\n' in quote:
         return quote
     return '\n'.join(textwrap.wrap(quote, width=wrap_width))
+
+def calculate_fontsize_from_longest_line(wrapped_quote, base_size=60, max_width_chars=40):
+    longest_line_length = max(len(line) for line in wrapped_quote.split('\n'))
+    scale_factor = min(1.0, max_width_chars / longest_line_length)
+    return int(base_size * scale_factor)
 
 @app.route("/generate", methods=["POST"])
 def generate_video():
@@ -43,20 +39,23 @@ def generate_video():
     output_path = os.path.join(OUTPUT_FOLDER, f"{os.path.splitext(video_filename)[0]}_{ts}.mp4")
     quote_path  = os.path.join(OUTPUT_FOLDER, f"quote_{ts}.txt")
 
-    # 1) Prepare the text file
+    # Process and save wrapped quote
     wrapped = process_quote_for_wrapping(quote_text)
     with open(quote_path, "w", encoding="utf-8") as f:
         f.write(wrapped)
 
-    fontsize = 25
+    # Determine font size based on the longest line
+    fontsize = calculate_fontsize_from_longest_line(wrapped)
 
+    # Define drawtext filter with fade-in/out (enable from 1s to 5s)
     vf = (
         f"drawtext=textfile={quote_path}:reload=1:"
-        f"fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:"
+        f"fontfile={ROBOTO_FONT_PATH}:"
         f"fontcolor=white:fontsize={fontsize}:line_spacing=12:"
         f"box=1:boxcolor=black@0.5:boxborderw=20:"
         f"x=(w-text_w)/2:y=(h-text_h)/2:"
-        f"enable='between(t,0,20)'"
+        f"enable='between(t,1,5)',"
+        f"fade=t=in:st=1:d=1,fade=t=out:st=4:d=1"
     )
 
     try:
@@ -68,7 +67,6 @@ def generate_video():
     except subprocess.CalledProcessError as e:
         return jsonify(error=str(e)), 500
     finally:
-        # always remove the temp text file
         if os.path.exists(quote_path):
             os.remove(quote_path)
 
