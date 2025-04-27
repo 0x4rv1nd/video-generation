@@ -1,8 +1,7 @@
-import json
-import re
 from flask import Flask, request, send_file, jsonify
 import subprocess
 import os
+import json
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 import textwrap
@@ -54,35 +53,35 @@ def create_quote_image(text, video_width, video_height, output_img_path):
         y_text += fontsize + line_spacing
 
     img.save(output_img_path)
-
-def clean_raw_json(raw_json):
-    # Clean unwanted escape sequences like \n, \t, etc.
-    cleaned = raw_json.replace("\\n", "").replace("\\t", "").replace('\\"', '"')
     
-    # Also handle unwanted ````json` and ```` by removing them
-    cleaned = re.sub(r'```json|```', '', cleaned).strip()
-    
-    try:
-        # Convert the cleaned raw string into a valid JSON object
-        return json.loads(cleaned)
-    except json.JSONDecodeError:
-        raise ValueError("Invalid JSON format after cleaning.")
-
 @app.route("/health", methods=["GET"])
 def health():
     return "OK", 200
 
 @app.route("/generate", methods=["POST"])
 def generate():
-    data = request.data.decode("utf-8")  # Get the raw JSON string
-    try:
-        # Clean the raw JSON string and convert to a dictionary
-        cleaned_data = clean_raw_json(data)
-        quote_text = cleaned_data.get("quote")
-        video_filename = cleaned_data.get("video")
-    except ValueError as e:
-        return jsonify(error=str(e)), 400
+    # Check if the incoming request is JSON or plain text
+    if request.is_json:
+        data = request.json
+    else:
+        # If the request is plain text, extract quote and video
+        raw_data = request.data.decode("utf-8")  # Decode the plain text
+        parts = raw_data.split(" ")  # Assuming plain text is in the format "quote video"
+        if len(parts) < 2:
+            return jsonify(error="Invalid input format"), 400
+        
+        quote_text = parts[0]
+        video_filename = parts[1]
+        
+        # Create a structured dictionary for further processing
+        data = {
+            "quote": quote_text,
+            "video": video_filename
+        }
 
+    quote_text = data.get("quote")
+    video_filename = data.get("video")
+    
     if not quote_text or not video_filename:
         return jsonify(error="Missing quote or video filename"), 400
 
