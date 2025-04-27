@@ -5,6 +5,7 @@ import json
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 import textwrap
+import re
 
 app = Flask(__name__)
 
@@ -53,25 +54,26 @@ def create_quote_image(text, video_width, video_height, output_img_path):
         y_text += fontsize + line_spacing
 
     img.save(output_img_path)
-
+    
 @app.route("/health", methods=["GET"])
 def health():
     return "OK", 200
 
 @app.route("/generate", methods=["POST"])
 def generate():
-    # Get the raw text from the request
-    raw_data = request.data.decode("utf-8")
+    # Parse plain text body
+    body_text = request.data.decode('utf-8').strip()
     
-    # Extract quote and video filename from the raw data (using regex)
-    import re
-    match = re.match(r'"([^"]+)"\s*"([^"]+)"', raw_data)
+    # Use regex to extract quote (in quotes) and video filename
+    match = re.match(r'^"([^"]+)"\s+"([^"]+)"$', body_text)
+    if not match:
+        return jsonify(error="Invalid format. Expected format: \"quote\" \"video.mp4\""), 400
     
-    if match and len(match.groups()) == 2:
-        quote_text = match.group(1)  # The quote
-        video_filename = match.group(2)  # The video filename
-    else:
-        return jsonify(error="Invalid input format"), 400
+    quote_text = match.group(1)
+    video_filename = match.group(2)
+    
+    if not quote_text or not video_filename:
+        return jsonify(error="Missing quote or video filename"), 400
 
     input_path = os.path.join(VIDEO_FOLDER, video_filename)
     if not os.path.exists(input_path):
