@@ -1,7 +1,8 @@
+import json
+import re
 from flask import Flask, request, send_file, jsonify
 import subprocess
 import os
-import json
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 import textwrap
@@ -53,17 +54,35 @@ def create_quote_image(text, video_width, video_height, output_img_path):
         y_text += fontsize + line_spacing
 
     img.save(output_img_path)
+
+def clean_raw_json(raw_json):
+    # Clean unwanted escape sequences like \n, \t, etc.
+    cleaned = raw_json.replace(r"\n", "").replace(r"\t", "").replace(r"\\"", '"')
     
+    # Also handle unwanted ````json` and ```` by removing them
+    cleaned = re.sub(r'```json|```', '', cleaned).strip()
+    
+    try:
+        # Convert the cleaned raw string into a valid JSON object
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        raise ValueError("Invalid JSON format after cleaning.")
+
 @app.route("/health", methods=["GET"])
 def health():
     return "OK", 200
 
 @app.route("/generate", methods=["POST"])
 def generate():
-    data = request.json
-    quote_text = data.get("quote")
-    video_filename = data.get("video")
-    
+    data = request.data.decode("utf-8")  # Get the raw JSON string
+    try:
+        # Clean the raw JSON string and convert to a dictionary
+        cleaned_data = clean_raw_json(data)
+        quote_text = cleaned_data.get("quote")
+        video_filename = cleaned_data.get("video")
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
+
     if not quote_text or not video_filename:
         return jsonify(error="Missing quote or video filename"), 400
 
