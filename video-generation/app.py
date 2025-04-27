@@ -57,7 +57,7 @@ def create_quote_image(text, video_width, video_height, output_img_path):
 
 def clean_raw_json(raw_json):
     # Clean unwanted escape sequences like \n, \t, etc.
-    cleaned = raw_json.replace(r"\n", "").replace(r"\t", "").replace(r"\\"", '"')
+    cleaned = raw_json.replace("\\n", "").replace("\\t", "").replace('\\"', '"')
     
     # Also handle unwanted ````json` and ```` by removing them
     cleaned = re.sub(r'```json|```', '', cleaned).strip()
