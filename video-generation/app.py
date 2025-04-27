@@ -29,8 +29,8 @@ def create_quote_image(text, video_width, video_height, output_img_path):
     safe_width = int(video_width * 0.80)  # 7/9 of width
     safe_height = int(video_height * 0.80)
 
-    fontsize = 20
-    min_fontsize = 16
+    fontsize = 22
+    min_fontsize = 18
     line_spacing = 5
 
     while fontsize >= min_fontsize:
