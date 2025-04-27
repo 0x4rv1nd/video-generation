@@ -53,37 +53,25 @@ def create_quote_image(text, video_width, video_height, output_img_path):
         y_text += fontsize + line_spacing
 
     img.save(output_img_path)
-    
+
 @app.route("/health", methods=["GET"])
 def health():
     return "OK", 200
 
 @app.route("/generate", methods=["POST"])
 def generate():
-    # Check if the incoming request is JSON or plain text
-    if request.is_json:
-        data = request.json
-    else:
-        # If the request is plain text, extract quote and video
-        raw_data = request.data.decode("utf-8")  # Decode the plain text
-        parts = raw_data.split(" ")  # Assuming plain text is in the format "quote video"
-        if len(parts) < 2:
-            return jsonify(error="Invalid input format"), 400
-        
-        quote_text = parts[0]
-        video_filename = parts[1]
-        
-        # Create a structured dictionary for further processing
-        data = {
-            "quote": quote_text,
-            "video": video_filename
-        }
-
-    quote_text = data.get("quote")
-    video_filename = data.get("video")
+    # Get the raw text from the request
+    raw_data = request.data.decode("utf-8")
     
-    if not quote_text or not video_filename:
-        return jsonify(error="Missing quote or video filename"), 400
+    # Extract quote and video filename from the raw data (using regex)
+    import re
+    match = re.match(r'"([^"]+)"\s*"([^"]+)"', raw_data)
+    
+    if match and len(match.groups()) == 2:
+        quote_text = match.group(1)  # The quote
+        video_filename = match.group(2)  # The video filename
+    else:
+        return jsonify(error="Invalid input format"), 400
 
     input_path = os.path.join(VIDEO_FOLDER, video_filename)
     if not os.path.exists(input_path):
