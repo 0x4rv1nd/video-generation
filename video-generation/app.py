@@ -95,7 +95,8 @@ def generate():
 
     try:
         subprocess.run(cmd, check=True)
-        return send_file(output_video_path, mimetype="video/mp4")
+        public_url = f"{request.url_root}static/output/final_{ts}.mp4"
+        return jsonify(video_url=public_url)
     except subprocess.CalledProcessError as e:
         return jsonify(error="Failed to overlay image"), 500
     finally:
