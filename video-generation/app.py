@@ -17,16 +17,17 @@ os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 def get_video_dimensions(video_path):
     cmd = [
         "ffprobe", "-v", "error", "-select_streams", "v:0",
-        "-show_entries", "stream=width,height", "-of", "json", video_path
+        "-show_entries", "stream=width,height,duration", "-of", "json", video_path
     ]
     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     info = json.loads(result.stdout)
     width = info['streams'][0]['width']
     height = info['streams'][0]['height']
-    return width, height
+    duration = float(info['streams'][0]['duration'])
+    return width, height, duration
 
 def create_quote_image(text, video_width, video_height, output_img_path):
-    safe_width = int(video_width * 0.80)  # 7/9 of width
+    safe_width = int(video_width * 0.80)
     safe_height = int(video_height * 0.80)
 
     fontsize = 22
@@ -42,7 +43,6 @@ def create_quote_image(text, video_width, video_height, output_img_path):
             break
         fontsize -= 2
 
-    # Create transparent image
     img = Image.new("RGBA", (video_width, video_height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     
@@ -54,24 +54,22 @@ def create_quote_image(text, video_width, video_height, output_img_path):
         y_text += fontsize + line_spacing
 
     img.save(output_img_path)
-    
+
 @app.route("/health", methods=["GET"])
 def health():
     return "OK", 200
 
 @app.route("/generate", methods=["POST"])
 def generate():
-    # Parse plain text body
     body_text = request.data.decode('utf-8').strip()
     
-    # Use regex to extract quote (in quotes) and video filename
     match = re.match(r'^"([^"]+)"\s+"([^"]+)"$', body_text)
     if not match:
         return jsonify(error="Invalid format. Expected format: \"quote\" \"video.mp4\""), 400
     
     quote_text = match.group(1)
     video_filename = match.group(2)
-    
+
     if not quote_text or not video_filename:
         return jsonify(error="Missing quote or video filename"), 400
 
@@ -83,14 +81,25 @@ def generate():
     img_path = os.path.join(OUTPUT_FOLDER, f"overlay_{ts}.png")
     output_video_path = os.path.join(OUTPUT_FOLDER, f"final_{ts}.mp4")
 
-    video_w, video_h = get_video_dimensions(input_path)
+    video_w, video_h, video_duration = get_video_dimensions(input_path)
     create_quote_image(quote_text, video_w, video_h, img_path)
 
+    fade_duration = 1  # seconds
+    fade_out_start = max(video_duration - fade_duration, 0)
+
     cmd = [
-        "ffmpeg", "-i", input_path,
-        "-i", img_path,
-        "-filter_complex", "overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2",
-        "-codec:a", "copy", output_video_path, "-y"
+        "ffmpeg",
+        "-i", input_path,
+        "-loop", "1", "-i", img_path,
+        "-filter_complex",
+        f"[1:v]format=rgba,fade=t=in:st=0:d={fade_duration}:alpha=1,"
+        f"fade=t=out:st={fade_out_start}:d={fade_duration}:alpha=1[ov];"
+        f"[0:v][ov]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2:shortest=1",
+        "-map", "0:a?",
+        "-c:v", "libx264",
+        "-preset", "fast",
+        "-crf", "23",
+        "-y", output_video_path
     ]
 
     try:
