@@ -1,4 +1,4 @@
-from flask import Flask, request, send_file, jsonify
+from flask import Flask, request, jsonify
 import subprocess
 import os
 import json
@@ -9,12 +9,14 @@ import re
 
 app = Flask(__name__)
 
+# Configuration
 VIDEO_FOLDER = "videos"
 OUTPUT_FOLDER = "static/output"
 FONT_PATH = "Roboto-Italic-VariableFont.ttf"
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
 def get_video_dimensions(video_path):
+    """Get width and height of the input video using ffprobe."""
     cmd = [
         "ffprobe", "-v", "error", "-select_streams", "v:0",
         "-show_entries", "stream=width,height", "-of", "json", video_path
@@ -26,7 +28,8 @@ def get_video_dimensions(video_path):
     return width, height
 
 def create_quote_image(text, video_width, video_height, output_img_path):
-    safe_width = int(video_width * 0.80)  # 7/9 of width
+    """Generate an overlay image with the quote text, centered on transparent background."""
+    safe_width = int(video_width * 0.80)
     safe_height = int(video_height * 0.80)
 
     fontsize = 22
@@ -42,7 +45,6 @@ def create_quote_image(text, video_width, video_height, output_img_path):
             break
         fontsize -= 2
 
-    # Create transparent image
     img = Image.new("RGBA", (video_width, video_height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     
@@ -54,24 +56,24 @@ def create_quote_image(text, video_width, video_height, output_img_path):
         y_text += fontsize + line_spacing
 
     img.save(output_img_path)
-    
+
 @app.route("/health", methods=["GET"])
 def health():
     return "OK", 200
 
 @app.route("/generate", methods=["POST"])
 def generate():
-    # Parse plain text body
+    """Accepts a plain-text body in the format: "quote" "video.mp4" """
     body_text = request.data.decode('utf-8').strip()
-    
-    # Use regex to extract quote (in quotes) and video filename
+
+    # Regex to extract: "quote" "video.mp4"
     match = re.match(r'^"([^"]+)"\s+"([^"]+)"$', body_text)
     if not match:
         return jsonify(error="Invalid format. Expected format: \"quote\" \"video.mp4\""), 400
-    
+
     quote_text = match.group(1)
     video_filename = match.group(2)
-    
+
     if not quote_text or not video_filename:
         return jsonify(error="Missing quote or video filename"), 400
 
@@ -97,7 +99,7 @@ def generate():
         subprocess.run(cmd, check=True)
         public_url = f"{request.url_root}static/output/final_{ts}.mp4"
         return jsonify(video_url=public_url)
-    except subprocess.CalledProcessError as e:
+    except subprocess.CalledProcessError:
         return jsonify(error="Failed to overlay image"), 500
     finally:
         if os.path.exists(img_path):
